@@ -41,6 +41,10 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
+#include <sycl/sycl.hpp>
+
+class vector_add;
+
 TEST_CASE("vector_add", "vector_add_solution") {
   constexpr size_t dataSize = 1024;
 
@@ -52,8 +56,34 @@ TEST_CASE("vector_add", "vector_add_solution") {
   }
 
   // Task: Compute r[i] = a[i] + b[i] in parallel on the SYCL device
-  for (int i = 0; i < dataSize; ++i) {
-    r[i] = a[i] + b[i];
+  try {
+
+    auto queue = sycl::queue{sycl::gpu_selector_v};
+    std::cout << "Chosen device: "
+              << queue.get_device().get_info<sycl::info::device::name>()
+              << std::endl;
+
+    {
+      auto bufA = sycl::buffer{a, sycl::range{dataSize}};
+      auto bufB = sycl::buffer{b, sycl::range{dataSize}};
+      auto bufR = sycl::buffer{r, sycl::range{dataSize}};
+
+      queue.submit([&](sycl::handler &cgh) {
+        auto accA = sycl::accessor{bufA, cgh, sycl::read_only};
+        auto accB = sycl::accessor{bufB, cgh, sycl::read_only};
+        auto accR = sycl::accessor{bufR, cgh, sycl::write_only};
+
+        cgh.parallel_for<vector_add>(sycl::range<1>(dataSize), [=] (sycl::id<1> idx) {
+
+            accR[idx] = accA[idx] + accB[idx];
+        });
+
+      }).wait();
+    }
+
+    queue.throw_asynchronous();
+  } catch (const sycl::exception &e) {
+    std::cout << "Exception caught: " << e.what() << std::endl;
   }
 
   for (int i = 0; i < dataSize; ++i) {
