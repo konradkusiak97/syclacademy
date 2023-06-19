@@ -52,6 +52,10 @@ TEST_CASE("usm_vector_add", "usm_vector_add_source") {
     queue.memcpy(b, device_ptrB, dataSize * sizeof(float)).wait();
     queue.memcpy(r, device_ptrR, dataSize * sizeof(float)).wait();
 
+    sycl::free(device_ptrA, queue);
+    sycl::free(device_ptrB, queue);
+    sycl::free(device_ptrR, queue);
+
     queue.throw_asynchronous();
   } catch(const sycl::exception &e) {
     std::cout << "Exception caught: " << e.what() << std::endl;
