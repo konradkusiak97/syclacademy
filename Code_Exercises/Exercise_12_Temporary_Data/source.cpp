@@ -50,6 +50,11 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch.hpp>
 
+#include <sycl/sycl.hpp>
+
+class kernel1;
+class kernel2;
+
 TEST_CASE("temporary_data", "temporary_data_source") {
   constexpr size_t dataSize = 1024;
 
@@ -60,18 +65,38 @@ TEST_CASE("temporary_data", "temporary_data_source") {
     out[i] = 0.0f;
   }
 
+  try {
+    auto queue = sycl::queue{sycl::gpu_selector_v};
+
+    auto buffIn = sycl::buffer{in, sycl::range{dataSize}};
+    auto buffTmp = sycl::buffer<float>{sycl::range{dataSize}};
+
+    buffIn.set_final_data(nullptr);
+    buffTmp.set_final_data(out);
+
+    queue.submit([&](sycl::handler& cgh) {
+      auto accIn = buffIn.get_access(cgh);
+      auto accTmp = buffTmp.get_access(cgh);
+
+      cgh.parallel_for<kernel1>(sycl::range{dataSize}, [=](sycl::id<1> idx) {
+        accTmp[idx] = accIn[idx] * 8.0f;
+      });
+    });
+
+    queue.submit([&](sycl::handler& cgh) {
+      auto accTmp = buffTmp.get_access(cgh);
+
+      cgh.parallel_for<kernel2>(sycl::range{dataSize}, [=](sycl::id<1> idx) {
+        accTmp[idx] /= 2.0f;
+      });
+    });
+
+    queue.wait_and_throw();
+  } catch (const sycl::exception &e) {
+    std::cout << "Exception caught: " << e.what() << std::endl;
+  }
+
   // Task: run these kernels on a SYCL device, minimising the memory transfers between the host and device
-
-  // Kernel A
-  for (int i = 0; i < dataSize; ++i) {
-    tmp[i] = in[i] * 8.0f;
-  }
-
-
-  // Kernel B
-  for (int i = 0; i < dataSize; ++i) {
-    out[i] = tmp[i] / 2.0f;
-  }
 
   for (int i = 0; i < dataSize; ++i) {
     REQUIRE(out[i] == i * 4.0f);
